@@ -86,7 +86,7 @@ python evaluators/gemini_evaluator.py --input outputs/raw/openai_results.jsonl -
 
 4. Collecte humaine (UI):
 ```bash
-export HUMAN_EVAL_TOKEN=mon-token   # facultatif mais recommandé
+export HUMAN_EVAL_TOKEN=mon-token   # facultative
 python evaluators/human/run_human_eval.py --host 0.0.0.0 --port 5000 --source outputs/raw/gemini_results.jsonl
 ```
 Ouvrir `http://127.0.0.1:5000`, annoter avec `annotator_id`. Les annotations sont stockées dans `outputs/human_annotations/<annotator_id>.jsonl`.
