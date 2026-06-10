@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Human Evaluation</title>
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;padding:20px}
+      label{display:block;margin-top:10px}
+      textarea{width:100%;height:80px}
+      .score{width:6em}
+      .meta{background:#f6f6f6;padding:10px;border-radius:6px}
+    </style>
+  </head>
+  <body>
+    <h2>Annotation humaine — item {{ idx + 1 }} / {{ total }}</h2>
+    <div class="meta">
+      <strong>Question:</strong>
+      <div>{{ item.question }}</div>
+      <strong>Réponse:</strong>
+      <div>{{ item.response }}</div>
+    </div>
+
+    <form method="post">
+      <label>Identifiant annotateur <input name="annotator_id" required></label>
+
+      {% for c in [
+        ('C1_exactitude_source_verite','Exactitude / sources / vérité'),
+        ('C2_realisme_terrain_togolais','Réalité terrain togolaise'),
+        ('C3_actionnabilite_clarte','Actionnabilité / clarté'),
+        ('C4_lucidite_limites','Lucidité / limites'),
+        ('C5_severite_hallucinations','Sévérité des hallucinations')
+      ] %}
+        <label>{{ c[1] }}
+          <select name="{{ c[0] }}" class="score">
+            <option value="5">5</option>
+            <option value="4">4</option>
+            <option value="3">3</option>
+            <option value="2">2</option>
+            <option value="1">1</option>
+          </select>
+        </label>
+        <label>Justification
+          <textarea name="just_{{ c[0] }}" placeholder="Courte justification (60–300 chars)"></textarea>
+        </label>
+      {% endfor %}
+
+      <label>Commentaires globaux
+        <textarea name="overall_comments"></textarea>
+      </label>
+
+      <button type="submit">Enregistrer et suivant</button>
+    </form>
+
+  </body>
+</html>

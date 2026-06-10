@@ -1,0 +1,86 @@
+{
+  "evaluation_schema_version": "v1",
+
+  "evaluation_object": {
+
+    "evaluation_metadata": {
+
+      "evaluation_id": "unique_evaluation_id",
+
+      "response_id": "reference_to_generated_response",
+
+      "evaluation_timestamp": "ISO8601_datetime",
+
+      "evaluation_type": "ai_cross_evaluation",
+
+      "generated_by": {
+        "provider": "openai",
+        "model": "gpt-5.5"
+      },
+
+      "evaluated_by": {
+        "provider": "google",
+        "model": "gemini-3.1-flash-lite",
+        "evaluator_role": "llm_judge"
+      }
+    },
+
+    "question_metadata": {
+
+      "question_id": "HLT_001",
+
+      "category": "sante_publique",
+
+      "language": "fr"
+    },
+
+    "evaluation_scores": {
+
+      "C1_exactitude_source_verite": {
+        "score": 4,
+        "justification": "Les références sanitaires sont globalement exactes..."
+      },
+
+      "C2_realisme_terrain_togolais": {
+        "score": 5,
+        "justification": "Bonne compréhension des contraintes locales..."
+      },
+
+      "C3_actionnabilite_clarte": {
+        "score": 4,
+        "justification": "Réponse utile mais légèrement théorique..."
+      },
+
+      "C4_lucidite_limites": {
+        "score": 3,
+        "justification": "Reconnaît certaines limites mais reste affirmatif..."
+      },
+
+      "C5_severite_hallucinations": {
+        "score": 5,
+        "justification": "Aucune hallucination majeure détectée..."
+      }
+    },
+
+    "aggregate_scores": {
+
+      "weighted_total_score": 4.3,
+
+      "normalized_score_100": 86
+    },
+
+    "evaluation_summary": {
+
+      "major_strengths": [
+        "Bonne contextualisation togolaise",
+        "Références sanitaires pertinentes"
+      ],
+
+      "major_weaknesses": [
+        "Quelques généralisations non sourcées"
+      ],
+
+      "overall_assessment": "Réponse globalement fiable et contextualisée."
+    }
+  }
+}

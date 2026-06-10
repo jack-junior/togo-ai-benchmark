@@ -2,8 +2,14 @@ import os
 import json
 import time
 from datetime import datetime, UTC
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path so `from utils...` works when running file directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from openai import OpenAI
+from utils.common import get_logger, retry
 from dotenv import load_dotenv
 from tqdm import tqdm
 
@@ -23,6 +29,8 @@ if not OPENAI_API_KEY:
 # =========================================================
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+logger = get_logger(__name__)
 
 # =========================================================
 # CONFIGURATION
@@ -84,6 +92,10 @@ def append_jsonl(file_path: str, data: dict):
     Append one JSON object to JSONL output file.
     """
 
+    dirpath = os.path.dirname(file_path)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
@@ -96,10 +108,10 @@ def run_benchmark():
 
     dataset = load_jsonl(INPUT_FILE)
 
-    print(f"\nLoaded {len(dataset)} questions")
-    print(f"Run name: {RUN_NAME}")
-    print(f"Model: {MODEL}")
-    print(f"Output file: {OUTPUT_FILE}\n")
+    logger.info("Loaded %d questions", len(dataset))
+    logger.info("Run name: %s", RUN_NAME)
+    logger.info("Model: %s", MODEL)
+    logger.info("Output file: %s", OUTPUT_FILE)
 
     for item in tqdm(dataset):
 
@@ -112,34 +124,34 @@ def run_benchmark():
 
         try:
 
-            response = client.chat.completions.create(
-                model=MODEL,
-                max_completion_tokens=MAX_TOKENS,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT
-                    },
-                    {
-                        "role": "user",
-                        "content": question
-                    }
-                ]
-            )
+            @retry(tries=3, delay=1, backoff=2)
+            def call_api():
+                return client.chat.completions.create(
+                    model=MODEL,
+                    max_completion_tokens=MAX_TOKENS,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": question},
+                    ],
+                )
+
+            response = call_api()
 
             latency = round(time.time() - start_time, 3)
 
             output_text = response.choices[0].message.content
 
-            usage = response.usage
+            usage = getattr(response, "usage", None)
 
-            prompt_tokens = usage.prompt_tokens
-            completion_tokens = usage.completion_tokens
-            total_tokens = usage.total_tokens
+            prompt_tokens = getattr(usage, "prompt_tokens", None) if usage else None
+            completion_tokens = getattr(usage, "completion_tokens", None) if usage else None
+            total_tokens = getattr(usage, "total_tokens", None) if usage else None
 
-            reasoning_tokens = (
-                usage.completion_tokens_details.reasoning_tokens
-            )
+            reasoning_tokens = None
+            if usage:
+                ctd = getattr(usage, "completion_tokens_details", None)
+                if ctd:
+                    reasoning_tokens = getattr(ctd, "reasoning_tokens", None)
 
             estimated_cost = estimate_cost(
                 prompt_tokens,
@@ -186,7 +198,7 @@ def run_benchmark():
 
             append_jsonl(OUTPUT_FILE, result)
 
-            print(f"Completed: {question_id}")
+            logger.info("Completed: %s", question_id)
 
         except Exception as e:
 
@@ -226,8 +238,7 @@ def run_benchmark():
 
             append_jsonl(OUTPUT_FILE, error_result)
 
-            print(f"\nERROR on {question_id}")
-            print(str(e))
+            logger.error("ERROR on %s: %s", question_id, str(e))
 
     print("\nBenchmark completed.")
 

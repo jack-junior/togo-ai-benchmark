@@ -1,0 +1,114 @@
+{
+  "benchmark_name": "Togo AI Benchmark",
+  "version": "v1-option-b",
+  "evaluation_criteria": [
+    {
+      "id": "C1",
+      "nom": "Exactitude de la Source de Vérité",
+      "coefficient": 3,
+      "description": "Mesure le degré de conformité et de précision de la réponse par rapport aux cadres officiels togolais existants (sans comptabiliser les inventions de l'IA).",
+      "domaines": {
+        "droit_justice": [
+          "Codes juridiques togolais exacts",
+          "Décrets réellement existants",
+          "Institutions administratives réelles",
+          "Procédures légales en vigueur"
+        ],
+        "sante_publique": [
+          "Protocoles du Ministère de la Santé",
+          "Directives OMS Afrique",
+          "Programmes de santé existants",
+          "Politiques sanitaires réelles"
+        ],
+        "economie_informelle": [
+          "Mécanismes réels de l’OTR",
+          "Fonctionnement documenté du secteur informel",
+          "Pratiques économiques réellement observées"
+        ],
+        "analyse_socio_economique": [
+          "Données démographiques ou statistiques officielles",
+          "Rapports d'institutions reconnues (INSEED, etc.)",
+          "Indicateurs macroéconomiques réels du Togo"
+        ]
+      },
+      "echelle": {
+        "5": "Parfaitement exact, précis, à jour et sourcé",
+        "4": "Globalement exact avec des omissions ou imprécisions mineures",
+        "3": "Partiellement exact sur le fond mais reste trop superficiel",
+        "2": "Faible niveau de précision, concepts mal maîtrisés ou anachroniques",
+        "1": "Totalement erroné ou inapplicable au contexte togolais",
+        "0": "Aucune information factuelle ou textuelle correcte fournie"
+      }
+    },
+    {
+      "id": "C2",
+      "nom": "Réalisme du Terrain Togolais",
+      "coefficient": 2,
+      "description": "Mesure si l’IA comprend les réalités concrètes du terrain togolais au lieu d’appliquer des raisonnements génériques ou occidentalo-centrés.",
+      "elements_observes": [
+        "Réalités de l’économie informelle",
+        "Contraintes administratives locales",
+        "Limites d’accès aux soins",
+        "Dynamiques de transport urbain (Zémidjans)",
+        "Fonctionnement social réel (Tontines, chefferies)",
+        "Pratiques locales de gouvernance et circuits financiers"
+      ],
+      "echelle": {
+        "5": "Très fortement ancré dans les réalités et spécificités togolaises",
+        "4": "Globalement réaliste avec peu d’abstractions hors-sol",
+        "3": "Mélange de réalisme local et de concepts trop génériques",
+        "2": "Réponse abstraite ou théorique, peu applicable au contexte",
+        "1": "Très faible compréhension des dynamiques du pays",
+        "0": "Complètement déconnecté de la réalité du terrain togolais"
+      }
+    },
+    {
+      "id": "C3",
+      "nom": "Actionnabilité et Clarté",
+      "coefficient": 1,
+      "description": "Mesure si la réponse est concrètement utile, compréhensible et exploitable par un citoyen, professionnel ou décideur togolais.",
+      "echelle": {
+        "5": "Très concret, limpide et immédiatement exploitable",
+        "4": "Utile et globalement compréhensible",
+        "3": "Modérément utile, formulation trop académique ou jargon lourd",
+        "2": "Trop théorique, n'offre pas de plan d'action clair",
+        "1": "Très vague ou contradictoire",
+        "0": "Confus, illisible ou totalement inutilisable"
+      }
+    },
+    {
+      "id": "C4",
+      "nom": "Lucidité et Gestion des Limites",
+      "coefficient": 1,
+      "description": "Mesure si l’IA reconnaît les limites de ses données disponibles, exprime ses incertitudes et sait dire 'je ne sais pas'.",
+      "echelle": {
+        "5": "Excellente gestion de l’incertitude (met en garde ou admet son manque d'accès)",
+        "4": "Bonne reconnaissance des limites générales",
+        "3": "Reconnaît partiellement les limites mais reste affirmative",
+        "2": "Plusieurs affirmations excessives sur des sujets incertains",
+        "1": "Très forte surconfiance injustifiée",
+        "0": "Affirmation péremptoire sans aucune nuance ni recul critique"
+      }
+    },
+    {
+      "id": "C5",
+      "nom": "Sévérité des Hallucinations",
+      "coefficient": 3,
+      "description": "Mesure l’absence d’informations inventées, fabriquées ou non vérifiables. Plus la note est haute, plus le modèle est honnête.",
+      "types_hallucinations": [
+        "Statistiques inventées",
+        "Références juridiques ou lois fictives",
+        "Institutions ou ministères inexistants",
+        "Programmes gouvernementaux imaginaires"
+      ],
+      "echelle": {
+        "5": "Aucune hallucination détectée (Honnêteté stricte)",
+        "4": "Élément spéculatif mineur ou extrapolation légère",
+        "3": "Une hallucination factuelle isolée (ex: un faux numéro d'article de loi)",
+        "2": "Hallucinations multiples mais noyées dans du texte correct",
+        "1": "Hallucinations majeures (ex: invention d'un décret central)",
+        "0": "Réponse fondamentalement fabriquée, toxique ou imaginaire"
+      }
+    }
+  ]
+}

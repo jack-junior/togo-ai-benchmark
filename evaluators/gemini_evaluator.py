@@ -1,0 +1,513 @@
+import os
+import json
+import uuid
+import time
+import re
+from datetime import datetime, UTC
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path so `from utils...` works when running file directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from google import genai
+from dotenv import load_dotenv
+from tqdm import tqdm
+from utils.common import get_logger, retry
+
+# =========================================================
+# LOAD ENVIRONMENT VARIABLES
+# =========================================================
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise ValueError(
+        "GEMINI_API_KEY not found in .env file"
+    )
+
+# =========================================================
+# GEMINI CLIENT
+# =========================================================
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+logger = get_logger(__name__)
+
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
+EVALUATOR_PROVIDER = "google"
+
+EVALUATOR_MODEL = os.getenv("GEMINI_MODEL")  # if not set, will fallback to the model that generated the response
+
+INPUT_FILE = "outputs/raw/openai_results.jsonl"
+
+OUTPUT_FILE = (
+    "outputs/evaluations/gemini_evaluations.jsonl"
+)
+
+PROMPT_FILE = (
+    "evaluators/prompts/"
+    "gemini_evaluator_prompt.txt"
+)
+
+SCORING_FILE = (
+    "config/scoring_criteria.json"
+)
+
+# =========================================================
+# HELPER FUNCTIONS
+# =========================================================
+
+def load_json(file_path):
+
+    with open(
+        file_path,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        return json.load(f)
+
+
+def load_jsonl(file_path):
+
+    data = []
+
+    with open(
+        file_path,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        for line in f:
+
+            data.append(json.loads(line))
+
+    return data
+
+
+def append_jsonl(file_path, data):
+
+    dirpath = os.path.dirname(file_path)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+
+    with open(file_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+
+def load_text(file_path):
+
+    with open(
+        file_path,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        return f.read()
+
+
+def generate_evaluation_id():
+
+    return str(uuid.uuid4())
+
+
+def calculate_weighted_score(scores):
+
+    coefficients = {
+
+        "C1_exactitude_source_verite": 3,
+
+        "C2_realisme_terrain_togolais": 2,
+
+        "C3_actionnabilite_clarte": 1,
+
+        "C4_lucidite_limites": 1,
+
+        "C5_severite_hallucinations": 3
+    }
+
+    weighted_sum = 0
+
+    total_weight = 0
+
+    for criterion, coefficient in (
+        coefficients.items()
+    ):
+
+        score = scores[
+            criterion
+        ]["score"]
+
+        weighted_sum += (
+            score * coefficient
+        )
+
+        total_weight += coefficient
+
+    weighted_score = round(
+        weighted_sum / total_weight,
+        2
+    )
+
+    normalized_score = round(
+        (weighted_score / 5) * 100
+    )
+
+    return (
+        weighted_score,
+        normalized_score
+    )
+
+
+# =========================================================
+# LOAD CONFIG FILES
+# =========================================================
+
+scoring_criteria = load_json(
+    SCORING_FILE
+)
+
+scoring_criteria_text = json.dumps(
+    scoring_criteria,
+    ensure_ascii=False,
+    indent=2
+)
+
+prompt_template = load_text(
+    PROMPT_FILE
+)
+
+# =========================================================
+# MAIN EVALUATION FUNCTION
+# =========================================================
+
+def evaluate_response(item):
+
+    question = (
+        item["input"]["question"]
+    )
+
+    response_text = (
+        item["output"]["response"]
+    )
+
+    generated_provider = (
+        item["benchmark_metadata"]["provider"]
+    )
+
+    generated_model = (
+        item["benchmark_metadata"]["api_returned_model"]
+    )
+
+    question_id = (
+        item["question_metadata"]["id"]
+    )
+
+    category = (
+        item["question_metadata"]["category"]
+    )
+
+    language = (
+        item["question_metadata"]["language"]
+    )
+
+    response_id = item.get(
+        "response_id",
+        str(uuid.uuid4())
+    )
+
+    final_prompt = (
+        prompt_template
+
+        .replace(
+            "{{SCORING_CRITERIA}}",
+            scoring_criteria_text
+        )
+
+        .replace(
+            "{{QUESTION}}",
+            question
+        )
+
+        .replace(
+            "{{RESPONSE}}",
+            response_text
+        )
+    )
+
+    start_time = time.time()
+
+    # Determine which Gemini model to call:
+    # - If `GEMINI_MODEL` env var is set, use it.
+    # - Else if the response was generated by Google and its model name looks like a Gemini model, reuse it.
+    # - Otherwise fallback to a safe default.
+    DEFAULT_GEMINI = "gemini-3.1-flash-lite"
+
+    if EVALUATOR_MODEL:
+        model_to_use = EVALUATOR_MODEL
+    else:
+        # only reuse generated_model when it comes from Google and looks like a Gemini model
+        if (
+            generated_provider
+            and generated_provider.lower() == "google"
+            and generated_model
+            and ("gemini" in generated_model or generated_model.startswith("models/"))
+        ):
+            model_to_use = generated_model
+        else:
+            model_to_use = DEFAULT_GEMINI
+
+    logger.info("Using Gemini model for evaluation: %s", model_to_use)
+
+    @retry(tries=3, delay=1, backoff=2)
+    def call_api():
+        return client.models.generate_content(model=model_to_use, contents=final_prompt)
+
+    response = call_api()
+
+    latency = round(
+        time.time() - start_time,
+        3
+    )
+
+    raw_content = response.text.strip()
+
+    # =====================================================
+    # REMOVE POSSIBLE MARKDOWN
+    # =====================================================
+
+    raw_content = (
+        raw_content
+        .replace("```json", "")
+        .replace("```", "")
+        .strip()
+    )
+
+    try:
+        parsed_evaluation = json.loads(raw_content)
+    except json.JSONDecodeError:
+        # Try to extract the first JSON object in the response and parse it
+        m = re.search(r"\{.*\}", raw_content, re.DOTALL)
+        if m:
+            try:
+                parsed_evaluation = json.loads(m.group(0))
+            except json.JSONDecodeError:
+                raise ValueError(
+                    "Evaluator returned malformed JSON. Raw start: "
+                    + raw_content[:1000]
+                )
+        else:
+            raise ValueError(
+                "Evaluator returned non-JSON response. Raw start: "
+                + raw_content[:1000]
+            )
+
+    evaluation_scores = (
+        parsed_evaluation[
+            "evaluation_scores"
+        ]
+    )
+
+    (
+        weighted_score,
+        normalized_score
+
+    ) = calculate_weighted_score(
+        evaluation_scores
+    )
+
+    usage_metadata = getattr(response, "usage_metadata", None)
+
+    prompt_tokens = getattr(
+        usage_metadata,
+        "prompt_token_count",
+        None
+    )
+
+    completion_tokens = getattr(
+        usage_metadata,
+        "candidates_token_count",
+        None
+    )
+
+    total_tokens = getattr(
+        usage_metadata,
+        "total_token_count",
+        None
+    )
+
+    final_evaluation = {
+
+        "evaluation_metadata": {
+
+            "evaluation_id": (
+                generate_evaluation_id()
+            ),
+
+            "response_id": response_id,
+
+            "evaluation_timestamp": (
+                datetime.now(UTC)
+                .isoformat()
+            ),
+
+            "evaluation_type": (
+                "ai_cross_evaluation"
+            ),
+
+            "generated_by": {
+
+                "provider": (
+                    generated_provider
+                ),
+
+                "model": (
+                    generated_model
+                )
+            },
+
+            "evaluated_by": {
+
+                "provider": (
+                    EVALUATOR_PROVIDER
+                ),
+
+                "model": (
+                    model_to_use
+                ),
+
+                "evaluator_role": (
+                    "llm_judge"
+                )
+            }
+        },
+
+        "question_metadata": {
+
+            "question_id": question_id,
+
+            "category": category,
+
+            "language": language
+        },
+
+        "evaluation_scores": (
+            evaluation_scores
+        ),
+
+        "aggregate_scores": {
+
+            "weighted_total_score": (
+                weighted_score
+            ),
+
+            "normalized_score_100": (
+                normalized_score
+            )
+        },
+
+        "evaluation_summary": (
+
+            parsed_evaluation[
+                "evaluation_summary"
+            ]
+        ),
+
+        "evaluation_metrics": {
+
+            "latency_seconds": (
+                latency
+            ),
+
+            "prompt_tokens": (
+                prompt_tokens
+            ),
+
+            "completion_tokens": (
+                completion_tokens
+            ),
+
+            "total_tokens": (
+                total_tokens
+            )
+        }
+    }
+
+    return final_evaluation
+
+
+# =========================================================
+# MAIN EXECUTION
+# =========================================================
+
+def run_evaluator():
+
+    dataset = load_jsonl(
+        INPUT_FILE
+    )
+
+    print(
+        f"\nLoaded {len(dataset)} responses"
+    )
+
+    print(
+        f"Evaluator model: "
+        f"{EVALUATOR_MODEL if EVALUATOR_MODEL else 'dynamic (per-response; will reuse generator model when appropriate or fallback to gemini-3.1-flash-lite)'}"
+    )
+
+    print(
+        f"Input file: {INPUT_FILE}"
+    )
+
+    print(
+        f"Output file: "
+        f"{OUTPUT_FILE}\n"
+    )
+
+    for item in tqdm(dataset):
+
+        try:
+
+            evaluation = (
+                evaluate_response(item)
+            )
+
+            append_jsonl(
+                OUTPUT_FILE,
+                evaluation
+            )
+
+            question_id = (
+                item[
+                    "question_metadata"
+                ]["id"]
+            )
+
+            print(
+                f"Evaluated: "
+                f"{question_id}"
+            )
+
+        except Exception as e:
+
+            print("\nERROR:")
+            print(str(e))
+
+    print(
+        "\nEvaluation completed."
+    )
+
+
+# =========================================================
+# ENTRY POINT
+# =========================================================
+
+if __name__ == "__main__":
+
+    run_evaluator()

@@ -2,8 +2,14 @@ import os
 import json
 import time
 from datetime import datetime, UTC
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path so `from utils...` works when running file directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from google import genai
+from utils.common import get_logger, retry
 from dotenv import load_dotenv
 from tqdm import tqdm
 
@@ -24,13 +30,15 @@ if not GEMINI_API_KEY:
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+logger = get_logger(__name__)
+
 # =========================================================
 # CONFIGURATION
 # =========================================================
 
 RUN_NAME = "health_pilot_v1"
 
-MODEL = "gemini-3.1-flash-lite"
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 MAX_TOKENS = 1500
 
@@ -73,6 +81,10 @@ def load_jsonl(file_path: str):
 
 def append_jsonl(file_path: str, data: dict):
 
+    dirpath = os.path.dirname(file_path)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+
     with open(file_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
@@ -85,10 +97,10 @@ def run_benchmark():
 
     dataset = load_jsonl(INPUT_FILE)
 
-    print(f"\nLoaded {len(dataset)} questions")
-    print(f"Run name: {RUN_NAME}")
-    print(f"Model: {MODEL}")
-    print(f"Output file: {OUTPUT_FILE}\n")
+    logger.info("Loaded %d questions", len(dataset))
+    logger.info("Run name: %s", RUN_NAME)
+    logger.info("Model: %s", MODEL)
+    logger.info("Output file: %s", OUTPUT_FILE)
 
     for item in tqdm(dataset):
 
@@ -108,13 +120,13 @@ User Question:
 {question}
 """
 
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=full_prompt,
-                config={
-                    "max_output_tokens": MAX_TOKENS
-                }
-            )
+            @retry(tries=3, delay=1, backoff=2)
+            def call_api():
+                return client.models.generate_content(
+                    model=MODEL, contents=full_prompt, config={"max_output_tokens": MAX_TOKENS}
+                )
+
+            response = call_api()
 
             latency = round(time.time() - start_time, 3)
 
@@ -185,7 +197,7 @@ User Question:
 
             append_jsonl(OUTPUT_FILE, result)
 
-            print(f"Completed: {question_id}")
+            logger.info("Completed: %s", question_id)
 
         except Exception as e:
 
@@ -225,8 +237,7 @@ User Question:
 
             append_jsonl(OUTPUT_FILE, error_result)
 
-            print(f"\nERROR on {question_id}")
-            print(str(e))
+            logger.error("ERROR on %s: %s", question_id, str(e))
 
     print("\nBenchmark completed.")
 

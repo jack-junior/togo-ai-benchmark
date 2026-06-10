@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Benchmark Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">Togo AI Benchmark</a>
+        <div class="collapse navbar-collapse">
+          <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+            <li class="nav-item"><a class="nav-link" href="/">Exports</a></li>
+            <li class="nav-item"><a class="nav-link" href="/../evaluators/human/run_human_eval.py">Annotator UI</a></li>
+          </ul>
+          <span class="navbar-text text-white">Data: outputs/evaluations & outputs/human_annotations</span>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container">
+      <div class="row mb-3">
+        <div class="col-md-8">
+          <h3>Overview</h3>
+          <p class="text-muted">Comparaison rapide des scores automatiques vs annotations humaines par modèle.</p>
+        </div>
+        <div class="col-md-4 text-end">
+          <a class="btn btn-outline-secondary" href="/export_details">Télécharger CSV détaillé</a>
+          <a class="btn btn-outline-secondary ms-2" href="/api/question_data">API JSON</a>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6">
+          <div class="card mb-3">
+            <div class="card-body">
+              <h5 class="card-title">Automatic Evaluations</h5>
+              {% if auto %}
+                <ul>
+                {% for m, data in auto.items() %}
+                  <li><strong>{{ m }}</strong> — {{ data.count }} items —
+                    {% for k, v in data.metrics.items() %}
+                      <span class="badge bg-info text-dark">{{ k }}: {{ v }}</span>
+                    {% endfor %}
+                  </li>
+                {% endfor %}
+                </ul>
+              {% else %}
+                <div class="text-muted">Aucune évaluation automatique trouvée.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="card mb-3">
+            <div class="card-body">
+              <h5 class="card-title">Human Annotations</h5>
+              {% if human %}
+                <ul>
+                {% for m, data in human.items() %}
+                  <li><strong>{{ m }}</strong> — {{ data.count }} annotations —
+                    {% for k, v in data.metrics.items() %}
+                      <span class="badge bg-success">{{ k }}: {{ v }}</span>
+                    {% endfor %}
+                  </li>
+                {% endfor %}
+                </ul>
+              {% else %}
+                <div class="text-muted">Aucune annotation humaine trouvée.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row mt-4">
+        <div class="col-12">
+          <h4>Per-question visualizations</h4>
+          <p class="text-muted">Sélectionnez une question pour comparer évaluations automatiques vs humaines.</p>
+          <div class="mb-2">
+            <label>Question: <select id="question-select" class="form-select d-inline-block w-50"></select></label>
+            <a class="btn btn-sm btn-outline-primary ms-2" id="downloadCSV">Télécharger CSV courant</a>
+          </div>
+          <canvas id="qchart" width="800" height="300"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <script>
+      async function loadQuestionData(){
+        const res = await fetch('/api/question_data');
+        if(!res.ok){ console.error('Failed to load question data', res.status); return; }
+        const data = await res.json();
+        window._pq = data;
+        const qids = Object.keys(data.auto).concat(Object.keys(data.human)).filter((v, i, a)=>a.indexOf(v)===i).sort();
+        const sel = document.getElementById('question-select');
+        sel.innerHTML = '';
+        qids.forEach(qid=>{ const o = document.createElement('option'); o.value=qid; o.text=qid; sel.appendChild(o); });
+        if(qids.length) sel.value = qids[0];
+        sel.addEventListener('change', ()=>renderFor(sel.value));
+        if(qids.length) renderFor(qids[0]);
+      }
+
+      let chart = null;
+      function renderFor(qid){
+        const data = window._pq || {auto:{}, human:{}};
+        const auto = data.auto[qid]||{};
+        const human = data.human[qid]||{};
+        const models = Object.keys(auto).concat(Object.keys(human)).filter((v,i,a)=>a.indexOf(v)===i);
+        const metricKeys = new Set();
+        models.forEach(m=>{ Object.keys(auto[m]||{}).forEach(k=>metricKeys.add(k)); Object.keys(human[m]||{}).forEach(k=>metricKeys.add(k)); });
+        const metrics = Array.from(metricKeys).sort();
+        const datasets = models.map((m, idx)=>{
+          const isHuman = human[m] && Object.keys(human[m]).length>0;
+          const vals = metrics.map(k=>{ return (auto[m] && auto[m][k]) || (human[m] && human[m][k]) || null; });
+          const hue = (idx*60)%360;
+          const color = `hsl(${hue} 70% 40%)`;
+          return {label: m + (isHuman? ' (human)':' (auto)'), data: vals, borderColor: color, backgroundColor: color, tension:0.2};
+        });
+        const ctx = document.getElementById('qchart').getContext('2d');
+        if(chart) chart.destroy();
+        chart = new Chart(ctx, { type: 'line', data: {labels: metrics, datasets: datasets}, options: {scales:{y:{min:0, max:5}}, plugins:{legend:{position:'bottom'}}} });
+      }
+      document.getElementById('downloadCSV').addEventListener('click', ()=>{ window.location='/export_details'; });
+      loadQuestionData();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
